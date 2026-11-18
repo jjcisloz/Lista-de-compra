@@ -21,7 +21,8 @@ Lista de la compra compartida para toda la familia. Funciona en el móvil como u
    - Marca **Public**.
    - Pulsa **Create repository**.
 3. En la página del repositorio vacío, pulsa **uploading an existing file**.
-4. Descomprime el ZIP en tu ordenador y **arrastra todo el contenido de la carpeta** (no la carpeta en sí: `index.html`, `app.js`, la carpeta `icons`, etc.). Pulsa **Commit changes**.
+4. Descomprime el ZIP en tu ordenador y **arrastra todo el contenido de la carpeta** (no la carpeta en sí: `index.html`, `app.js`, las carpetas `icons`, `android-res` y `.github`, etc.). Pulsa **Commit changes**.
+   - La carpeta `.github` empieza por punto y algunos ordenadores la ocultan. Si no la ves al arrastrar, créala a mano en GitHub: **Add file › Create new file**, escribe como nombre `.github/workflows/android-apk.yml` y pega el contenido de ese archivo.
 5. Ve a **Settings › Pages**. En *Branch* elige `main` y carpeta `/ (root)`. Pulsa **Save**.
 6. Espera uno o dos minutos. Tu app estará en:
    `https://TU-USUARIO.github.io/lista-compra/`
@@ -64,6 +65,32 @@ La sincronización entre móviles usa Firebase, de Google. El plan gratuito sobr
 - **Android (Chrome):** abre la dirección de tu app, menú ⋮ › **Instalar aplicación** o **Añadir a pantalla de inicio**.
 - **iPhone (Safari):** abre la dirección, botón Compartir › **Añadir a pantalla de inicio**.
 
+## 3 bis. App Android (APK) creada automáticamente
+
+El repositorio incluye un flujo de **GitHub Actions** (`.github/workflows/android-apk.yml`) que crea un APK de Android cada vez que subes cambios. No necesitas instalar nada en tu ordenador.
+
+**Antes del primer APK (recomendado): añade la llave de firma.** Sin ella, el APK se crea igual, pero cada versión nueva obliga a desinstalar la anterior.
+
+1. En el repositorio: **Settings › Secrets and variables › Actions › New repository secret**.
+2. Crea los 3 secretos que vienen en el archivo `SECRETOS-GITHUB.txt` (está en un ZIP aparte, **no lo subas al repositorio**): `ANDROID_KEY_ALIAS`, `ANDROID_KEYSTORE_PASSWORD` y `ANDROID_KEYSTORE_BASE64`.
+
+**Para crear el APK:**
+
+1. Rellena antes `config.js` con tus datos de Firebase (el APK lleva dentro la configuración que haya en ese momento).
+2. Sube cualquier cambio a `main`, o ve a la pestaña **Actions › APK Android › Run workflow**.
+3. Tarda unos 5 minutos. Cuando termine con ✅, el APK aparece en **Releases** (columna derecha de la página del repositorio) como `la-compra.apk`.
+
+**Para instalarlo:** abre la página de Releases desde el móvil Android, descarga `la-compra.apk` y ábrelo. Android pedirá permiso para «instalar apps de origen desconocido» desde el navegador: acéptalo solo para esto.
+
+**Diferencias con la versión web:**
+
+- La voz usa el reconocimiento nativo de Android, más fiable que el del navegador. La primera vez pide permiso para el micrófono.
+- Firebase va incluido en el APK, así que la app abre aunque no haya cobertura.
+- «Invitar a la familia» abre el menú de compartir de Android (WhatsApp, etc.) con el enlace web de la lista. Quien tenga el APK puede pegar ese enlace en «Unirme con el enlace».
+- El botón «atrás» de Android cierra ventanas y vuelve a la lista antes de salir.
+
+Si una ejecución falla (❌), entra en ella, abre el paso en rojo y copia el error: normalmente se arregla con un cambio pequeño.
+
 ## 4. Invitar a la familia
 
 La primera vez que abras la app con Firebase configurado, pulsa **Crear la lista de mi casa**. Después ve a **Ajustes ⚙️ › Invitar a la familia** y manda el enlace por WhatsApp. Quien lo abra entra directamente en vuestra lista.
@@ -96,5 +123,8 @@ Cada persona lo activa en su móvil en **Ajustes › Controlar fechas de caducid
 | `sw.js` | Permite abrir la app sin conexión |
 | `manifest.webmanifest`, `icons/` | Para instalarla como app |
 | `firestore.rules` | Reglas de seguridad para pegar en Firebase |
+| `.github/workflows/android-apk.yml` | Crea el APK de Android en GitHub Actions |
+| `package.json`, `capacitor.config.json` | Configuración del APK (Capacitor) |
+| `android-res/` | Icono y pantalla de inicio de la app Android |
 
 Si cambias algo del código, sube también el número de `CACHE` en `sw.js` (por ejemplo `la-compra-v1.0.1`) para que los móviles descarguen la versión nueva.

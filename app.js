@@ -3,7 +3,10 @@
 "use strict";
 const DAY = 864e5;
 const $ = s => document.querySelector(s);
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
+const CAP = window.Capacitor;
+const isNative = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
+const plugin = n => (isNative && CAP.Plugins && CAP.Plugins[n]) || null;
 
 function h(tag, props, ...kids){
   const el = document.createElement(tag);
@@ -142,7 +145,7 @@ function loadScript(src){
   return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("No se pudo cargar " + src)); document.head.append(s); });
 }
 async function makeFirebaseDb(cfg, code){
-  const v = "10.12.2", base = `https://www.gstatic.com/firebasejs/${v}/`;
+  const v = "10.12.2", base = isNative ? "./vendor/" : `https://www.gstatic.com/firebasejs/${v}/`;
   await loadScript(base + "firebase-app-compat.js");
   await Promise.all([loadScript(base + "firebase-auth-compat.js"), loadScript(base + "firebase-firestore-compat.js")]);
   const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(cfg);
@@ -347,8 +350,30 @@ function checkout(){
 }
 
 /* ---------- Voz ---------- */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SR = isNative ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
+const NSR = plugin("SpeechRecognition");
+const NTTS = plugin("TextToSpeech");
+const canListen = !!(SR || NSR);
+// En la app Android: reconocimiento de voz nativo de Android
+function listenNative({onFinal, onEnd}){
+  let stopped = false;
+  const end = (err, fin) => { if (onEnd){ const f = onEnd; onEnd = null; f(err, fin); } };
+  const handle = {abort(){ stopped = true; NSR.stop().catch(() => {}); end(null, false); }, stop(){ NSR.stop().catch(() => {}); }};
+  (async () => {
+    try {
+      let perm = await NSR.checkPermissions();
+      if (perm.speechRecognition !== "granted") perm = await NSR.requestPermissions();
+      if (perm.speechRecognition !== "granted"){ end("not-allowed", false); return; }
+      const r = await NSR.start({language:"es-ES", maxResults:5, partialResults:false, popup:false});
+      if (stopped) return;
+      const m = (r && r.matches) || [];
+      if (m.length){ onFinal && onFinal(m); end(null, true); } else end(null, false);
+    } catch (e){ if (!stopped) end("no-speech", false); }
+  })();
+  return handle;
+}
 function listen({onPartial, onFinal, onEnd}){
+  if (NSR) return listenNative({onFinal, onEnd});
   if (!SR) return null;
   let r;
   try { r = new SR(); } catch { return null; }
@@ -368,7 +393,9 @@ function listen({onPartial, onFinal, onEnd}){
   return r;
 }
 function say(text){
-  if (!prefs.speak || !("speechSynthesis" in window)) return;
+  if (!prefs.speak) return;
+  if (NTTS){ NTTS.speak({text, lang:"es-ES", rate:1.0}).catch(() => {}); return; }
+  if (!("speechSynthesis" in window)) return;
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -425,14 +452,14 @@ const isoInput = (id, value) => h("input", {id, type:"date", value:value || ""})
 function openExpiry({mode, item, stock, autoListen}){
   let rec = null, chosen = null;
   const nameOf = () => (item && item.name) || (stock && stock.name) || "";
-  const heard = h("span", {class:"heard", text: SR ? "Toca el micro y di la fecha, por ejemplo «20 11 26»." : "Escribe la fecha, por ejemplo 20 11 26."});
+  const heard = h("span", {class:"heard", text: canListen ? "Toca el micro y di la fecha, por ejemplo «20 11 26»." : "Escribe la fecha, por ejemplo 20 11 26."});
   const box = h("div", {class:"listen"}, h("span", {class:"dot", "aria-hidden":"true"}), heard);
   const result = h("div", {class:"big-date", "aria-live":"polite"});
   const typed = h("input", {id:"fTyped", inputmode:"numeric", autocomplete:"off", placeholder:"20 11 26"});
   const picker = isoInput("fDate", (item && item.exp) || (stock && stock.exp) || "");
   const nameIn = mode === "new" ? h("input", {id:"fNewName", placeholder:"Yogures, pechuga de pavo…", class:"autofocus"}) : null;
   const saveBtn = h("button", {class:"btn btn-primary", type:"button", disabled:true, onclick:() => commit()}, "Guardar fecha");
-  const micBtn = SR ? h("button", {class:"btn btn-ghost", type:"button", onclick:() => start()}, "🎤 Decir la fecha") : null;
+  const micBtn = canListen ? h("button", {class:"btn btn-ghost", type:"button", onclick:() => start()}, "🎤 Decir la fecha") : null;
 
   function show(iso, approx){
     chosen = iso;
@@ -445,7 +472,7 @@ function openExpiry({mode, item, stock, autoListen}){
     return null;
   }
   function start(){
-    if (!SR) return;
+    if (!canListen) return;
     if (rec){ try { rec.abort(); } catch {} rec = null; }
     box.classList.add("on");
     heard.textContent = "Te escucho…";
@@ -546,16 +573,23 @@ function openItem(it){
 }
 
 function shareLink(){
+  const web = (window.APP_CONFIG && window.APP_CONFIG.webUrl) || "";
+  if (isNative){
+    if (!web) return "";
+    const u = new URL(web); u.search = "?casa=" + prefs.household; u.hash = ""; return u.toString();
+  }
   const u = new URL(location.href);
   u.hash = ""; u.search = "?casa=" + prefs.household;
   return u.toString();
 }
 async function invite(){
   const url = shareLink();
-  const text = `Únete a nuestra lista de la compra: ${url}`;
+  const text = url ? `Únete a nuestra lista de la compra: ${url}` : `Únete a nuestra lista de la compra. Código de casa: ${prefs.household}`;
+  const NS = plugin("Share");
+  if (NS){ try { await NS.share({title:"La lista de la compra", text, url:url || undefined, dialogTitle:"Invitar a la familia"}); } catch {} return; }
   if (navigator.share){ try { await navigator.share({title:"La lista de la compra", text:"Únete a nuestra lista de la compra", url}); return; } catch (e){ if (e && e.name === "AbortError") return; } }
   try { await navigator.clipboard.writeText(url); toast("Enlace copiado. Pégalo en el grupo de la familia."); }
-  catch { prompt("Copia este enlace y mándalo a tu familia:", text); }
+  catch { prompt("Copia esto y mándalo a tu familia:", text); }
 }
 
 function openSettings(){
@@ -1032,7 +1066,7 @@ $("#gearBtn").addEventListener("click", openSettings);
 $("#checkoutBtn").addEventListener("click", openCheckout);
 
 /* Dictado de productos */
-if (SR){
+if (canListen){
   const mic = $("#micBtn");
   mic.hidden = false;
   let rec = null;
@@ -1126,8 +1160,17 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 S.alertDay = new Date().toDateString();
+const NApp = plugin("App");
+if (NApp){
+  NApp.addListener("backButton", () => {
+    if (!$("#sheetWrap").hidden) closeSheet();
+    else if (S.view !== "lista" && !S.setup) location.hash = "#lista";
+    else NApp.exitApp();
+  });
+  NApp.addListener("resume", () => document.dispatchEvent(new Event("visibilitychange")));
+}
 
-if ("serviceWorker" in navigator && location.protocol === "https:"){
+if (!isNative && "serviceWorker" in navigator && location.protocol === "https:"){
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
 }
 boot();

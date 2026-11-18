@@ -1,0 +1,9 @@
+{
+  "appId": "com.familia.lacompra",
+  "appName": "La compra",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#EDF1F7"
+  }
+}

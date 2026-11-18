@@ -1,5 +1,5 @@
 /* Service worker: la app abre y funciona sin cobertura (la lista se sincroniza al volver la conexión). */
-const CACHE = "la-compra-v1.0.0";
+const CACHE = "la-compra-v1.1.0";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./dateparse.js", "./config.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
